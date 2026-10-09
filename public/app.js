@@ -52,11 +52,11 @@ function showApp(user) {
 function showAuth() { libraryRequestId++; currentUser = null; $('#app-view').classList.add('hidden'); $('#auth-view').classList.remove('hidden'); $('#auth-form').reset(); switchAuth('login'); }
 function navigate(page) {
   if (page === 'admin' && currentUser?.role !== 'admin') page = 'library';
-  ['library', 'bookmarks', 'admin'].forEach(p => $(`#${p}-page`).classList.toggle('hidden', p !== page));
+  ['library', 'bookmarks', 'focus', 'admin'].forEach(p => $(`#${p}-page`).classList.toggle('hidden', p !== page));
   $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
-  $('#page-crumb').textContent = page === 'library' ? 'Library' : page === 'bookmarks' ? 'My bookmarks' : 'Admin dashboard';
+  $('#page-crumb').textContent = page === 'library' ? 'Library' : page === 'bookmarks' ? 'My bookmarks' : page === 'focus' ? 'Focus timer' : 'Admin dashboard';
   $('#sidebar').classList.remove('open');
-  if (page === 'library') loadLibrary(); if (page === 'bookmarks') loadBookmarks(); if (page === 'admin') loadAdmin();
+  if (page === 'library') loadLibrary(); if (page === 'bookmarks') loadBookmarks(); if (page === 'admin') loadAdmin(); if (page === 'focus') renderFocusPage();
 }
 function cardHtml(m) {
   return `<article class="material-card"><div class="card-top"><div class="file-badge">PDF</div><span class="subject-tag" title="${esc(m.subject)}">${esc(m.subject)}</span></div><div class="card-top" style="margin-top:-8px;margin-bottom:10px"><span style="font-size:9px;color:#9ba3af">${esc(sizeFmt(m.size || 0))}</span><button class="bookmark-btn ${m.bookmarked ? 'saved' : ''}" data-bookmark="${esc(m.id)}" aria-label="${m.bookmarked ? 'Remove bookmark' : 'Bookmark material'}" title="${m.bookmarked ? 'Remove bookmark' : 'Bookmark material'}">${m.bookmarked ? '♥' : '♡'}</button></div><h3>${esc(m.title)}</h3><p class="material-description">${esc(m.description || 'No description provided for this resource.')}</p><div class="card-meta"><span>Added ${esc(dateFmt(m.createdAt))}</span><span title="${esc(m.uploadedByName)}">${esc(m.uploadedByName || 'StudyHub')}</span></div><div class="card-actions"><a class="open-pdf" href="/api/materials/${encodeURIComponent(m.id)}/pdf" target="_blank" rel="noopener">Open PDF ↗</a>${currentUser?.role === 'admin' ? `<button class="delete-material" data-delete-material="${esc(m.id)}">Delete</button>` : ''}</div></article>`;
@@ -163,3 +163,100 @@ document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.ke
   try { const data = await api('/api/auth/me'); if (data.user) showApp(data.user); else showAuth(); }
   catch { showAuth(); }
 })();
+
+// Focus timer (Pomodoro). All focus data stays in this browser's localStorage - nothing is sent to the server.
+const FOCUS_LOG_KEY = 'studyhub.focus.log';
+const FOCUS_ACTIVE_KEY = 'studyhub.focus.active';
+let timerState = null;
+let timerInterval = null;
+let activePreset = { focus: 25, break: 5 };
+
+function loadFocusLog() { try { const log = JSON.parse(localStorage.getItem(FOCUS_LOG_KEY)); return Array.isArray(log) ? log : []; } catch { return []; } }
+function saveFocusLog(log) { try { localStorage.setItem(FOCUS_LOG_KEY, JSON.stringify(log.slice(-200))); } catch {} }
+function persistTimerState() { try { if (timerState) localStorage.setItem(FOCUS_ACTIVE_KEY, JSON.stringify(timerState)); else localStorage.removeItem(FOCUS_ACTIVE_KEY); } catch {} }
+function idleFocusMinutes() { const c = parseInt($('#focus-custom')?.value, 10); return Number.isFinite(c) && c >= 1 ? Math.min(c, 240) : activePreset.focus; }
+function timerRemaining() { if (!timerState) return idleFocusMinutes() * 60000; return timerState.paused ? timerState.remainingMs : Math.max(0, timerState.endAt - Date.now()); }
+function fmtClock(ms) { const t = Math.ceil(ms / 1000); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; }
+function beep() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator(); const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.frequency.value = 880; gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.7);
+    osc.start(); osc.stop(ctx.currentTime + 0.7);
+  } catch {}
+}
+function renderTimer() {
+  const clock = $('#timer-clock'); if (!clock) return;
+  clock.textContent = fmtClock(timerRemaining());
+  $('#timer-phase').textContent = !timerState ? 'Ready to focus' : timerState.paused ? 'Paused' : timerState.phase === 'focus' ? `Focus · ${timerState.subject}` : 'Break';
+  $('#timer-start').classList.toggle('hidden', !!timerState);
+  $('#timer-pause').classList.toggle('hidden', !timerState);
+  $('#timer-pause').textContent = timerState?.paused ? 'Resume' : 'Pause';
+  $('#timer-reset').classList.toggle('hidden', !timerState);
+}
+function tickTimer() { if (timerState && !timerState.paused && Date.now() >= timerState.endAt) completeTimerPhase(); renderTimer(); }
+function startTimer() {
+  const focusMinutes = idleFocusMinutes();
+  const subject = ($('#focus-subject').value.trim() || 'General').slice(0, 100);
+  clearInterval(timerInterval);
+  timerState = { phase: 'focus', subject, focusMinutes, breakMinutes: activePreset.break, endAt: Date.now() + focusMinutes * 60000, remainingMs: null, paused: false };
+  timerInterval = setInterval(tickTimer, 500); persistTimerState(); renderTimer();
+}
+function togglePause() {
+  if (!timerState) return;
+  if (timerState.paused) { timerState.paused = false; timerState.endAt = Date.now() + timerState.remainingMs; timerState.remainingMs = null; timerInterval = setInterval(tickTimer, 500); }
+  else { timerState.paused = true; timerState.remainingMs = Math.max(0, timerState.endAt - Date.now()); clearInterval(timerInterval); }
+  persistTimerState(); renderTimer();
+}
+function resetTimer() { timerState = null; clearInterval(timerInterval); persistTimerState(); renderTimer(); }
+function completeTimerPhase() {
+  clearInterval(timerInterval);
+  if (timerState.phase === 'focus') {
+    const log = loadFocusLog(); log.push({ subject: timerState.subject, minutes: timerState.focusMinutes, endedAt: new Date().toISOString() }); saveFocusLog(log);
+    beep(); toast(`${timerState.focusMinutes} min focus logged for ${timerState.subject}. Break time.`);
+    if (timerState.breakMinutes > 0) { timerState = { phase: 'break', subject: timerState.subject, focusMinutes: timerState.focusMinutes, breakMinutes: timerState.breakMinutes, endAt: Date.now() + timerState.breakMinutes * 60000, remainingMs: null, paused: false }; timerInterval = setInterval(tickTimer, 500); }
+    else timerState = null;
+  } else { beep(); toast('Break over. Ready for the next round?'); timerState = null; }
+  persistTimerState(); renderTimer(); renderFocusLog();
+}
+function renderFocusPage() {
+  const list = $('#focus-subject-list'); if (!list) return;
+  list.innerHTML = currentSubjects.map(s => `<option value="${esc(s)}"></option>`).join('');
+  renderTimer(); renderFocusLog();
+}
+function renderFocusLog() {
+  const box = $('#focus-log'); if (!box) return;
+  const log = loadFocusLog();
+  const today = new Date().toDateString();
+  const todays = log.filter(e => new Date(e.endedAt).toDateString() === today);
+  $('#focus-today-total').textContent = `${todays.reduce((sum, e) => sum + (e.minutes || 0), 0)} min today`;
+  const bySubject = {};
+  todays.forEach(e => { bySubject[e.subject] = (bySubject[e.subject] || 0) + (e.minutes || 0); });
+  $('#focus-subject-totals').innerHTML = Object.entries(bySubject).sort((a, b) => b[1] - a[1]).map(([s, m]) => `<span class="focus-chip">${esc(s)} · ${m} min</span>`).join('');
+  box.innerHTML = [...log].reverse().slice(0, 10).map(e => `<div class="focus-log-row"><span class="focus-log-subject">${esc(e.subject)}</span><span class="focus-log-meta">${e.minutes} min · ${esc(dateFmt(e.endedAt))}, ${esc(new Date(e.endedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}</span></div>`).join('');
+  $('#focus-log-empty').classList.toggle('hidden', log.length > 0);
+}
+function restoreTimer() {
+  let saved;
+  try { saved = JSON.parse(localStorage.getItem(FOCUS_ACTIVE_KEY)); } catch { saved = null; }
+  if (!saved || (saved.phase !== 'focus' && saved.phase !== 'break') || (typeof saved.endAt !== 'number' && !saved.paused)) return;
+  timerState = saved;
+  if (timerState.paused) { renderTimer(); return; }
+  if (Date.now() >= timerState.endAt) { completeTimerPhase(); return; }
+  timerInterval = setInterval(tickTimer, 500); renderTimer();
+}
+$$('#timer-presets .preset-btn').forEach(b => b.addEventListener('click', () => {
+  if (timerState) return toast('Finish or reset the current round first.', 'error');
+  $$('#timer-presets .preset-btn').forEach(x => x.classList.remove('active')); b.classList.add('active');
+  activePreset = { focus: Number(b.dataset.focus), break: Number(b.dataset.break) }; renderTimer();
+}));
+$('#timer-start').addEventListener('click', startTimer);
+$('#timer-pause').addEventListener('click', togglePause);
+$('#timer-reset').addEventListener('click', resetTimer);
+$('#focus-custom').addEventListener('input', () => { if (!timerState) renderTimer(); });
+restoreTimer();
+
+// Progressive web app shell: register the service worker for installability and offline static assets.
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
