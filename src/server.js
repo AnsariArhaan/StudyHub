@@ -7,6 +7,7 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -41,12 +42,12 @@ function findUserByEmail(email) { return db.users.find(u => u.email.toLowerCase(
 async function ensureAdmin() {
   const email = String(process.env.ADMIN_EMAIL || 'admin@example.com').toLowerCase();
   if (findUserByEmail(email)) return;
-  const password = process.env.ADMIN_PASSWORD || 'ChangeThisAdminPassword123!';
+  const password = process.env.ADMIN_PASSWORD;
+  if (!password) throw new Error('ADMIN_PASSWORD is not set. Copy .env.example to .env and set ADMIN_PASSWORD (min 12 characters).');
   if (password.length < 12) throw new Error('ADMIN_PASSWORD must be at least 12 characters.');
   db.users.push({ id: crypto.randomUUID(), name: safeText(process.env.ADMIN_NAME || 'System Admin', 80), email, passwordHash: await bcrypt.hash(password, 12), role: 'admin', createdAt: new Date().toISOString() });
   saveDb();
   console.log(`Initial admin created: ${email}`);
-  if (!process.env.ADMIN_PASSWORD) console.warn('DEVELOPMENT DEFAULT ADMIN PASSWORD IN USE. Set ADMIN_PASSWORD in .env immediately.');
 }
 
 app.disable('x-powered-by');
