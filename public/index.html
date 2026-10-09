@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101827"><title>StudyHub</title>
+  <meta name="theme-color" content="#111c2e"><title>StudyHub</title>
+  <link rel="manifest" href="/manifest.webmanifest"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="StudyHub"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="icon" type="image/png" href="/icons/icon-192.png"><link rel="apple-touch-icon" href="/icons/icon-180.png">
   <link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
 </head>
 <body>
@@ -35,6 +36,7 @@
       <nav class="side-nav">
         <button class="nav-item active" data-page="library"><span class="nav-icon">▤</span> Library <span class="nav-count" id="library-count">0</span></button>
         <button class="nav-item" data-page="bookmarks"><span class="nav-icon">♡</span> My bookmarks</button>
+        <button class="nav-item" data-page="focus"><span class="nav-icon">◷</span> Focus timer</button>
         <button class="nav-item admin-nav hidden" data-page="admin"><span class="nav-icon">◫</span> Admin dashboard</button>
       </nav>
       <div class="sidebar-bottom"><div class="help-card"><span class="help-icon">✳</span><strong>Small steps add up.</strong><p>Keep your materials organized and your focus on learning.</p></div><div class="profile-row"><div class="avatar" id="profile-avatar">S</div><div class="profile-info"><strong id="profile-name">Student</strong><span id="profile-role">Student account</span></div><button class="icon-button logout-button" id="logout-btn" title="Sign out" aria-label="Sign out">↗</button></div></div>
@@ -47,6 +49,31 @@
         <div class="results-line"><span id="results-label">All materials</span><span id="results-count">0 results</span></div><div id="material-grid" class="material-grid"></div><div id="empty-state" class="empty-state hidden"><div class="empty-icon">⌕</div><h3>No materials found</h3><p>Try another search or clear your filters to see more resources.</p><button class="btn btn-secondary" id="empty-clear">Clear filters</button></div>
       </section>
       <section class="page-content hidden" id="bookmarks-page"><div class="page-heading"><div><span class="eyebrow">YOUR PERSONAL READING LIST</span><h1>My bookmarks<span class="heading-period">.</span></h1><p>Resources you saved to revisit later.</p></div></div><div id="bookmark-grid" class="material-grid"></div><div id="bookmark-empty" class="empty-state hidden"><div class="empty-icon">♡</div><h3>Your reading list starts here</h3><p>Bookmark a material from the library and it will show up here.</p><button class="btn btn-secondary" data-go-library>Explore library</button></div></section>
+      <section class="page-content hidden" id="focus-page"><div class="page-heading"><div><span class="eyebrow">DEEP WORK MODE</span><h1>Focus timer<span class="heading-period">.</span></h1><p>Pick a subject, start a round, and build your focus log.</p></div></div>
+        <div class="focus-layout">
+          <section class="panel focus-panel">
+            <div class="timer-presets" id="timer-presets">
+              <button class="preset-btn active" data-focus="25" data-break="5" type="button">25 / 5</button>
+              <button class="preset-btn" data-focus="50" data-break="10" type="button">50 / 10</button>
+              <button class="preset-btn" data-focus="15" data-break="3" type="button">15 / 3</button>
+            </div>
+            <div class="timer-display"><span id="timer-phase">Ready to focus</span><strong id="timer-clock">25:00</strong></div>
+            <label class="field">Subject<input id="focus-subject" list="focus-subject-list" maxlength="100" placeholder="e.g. Statistics"><datalist id="focus-subject-list"></datalist></label>
+            <label class="field">Custom focus minutes <span class="optional">(optional)</span><input id="focus-custom" type="number" min="1" max="240" placeholder="Uses the preset when empty"></label>
+            <div class="timer-actions">
+              <button class="btn btn-primary" id="timer-start" type="button">Start focus <span>↗</span></button>
+              <button class="btn btn-secondary hidden" id="timer-pause" type="button">Pause</button>
+              <button class="btn btn-secondary hidden" id="timer-reset" type="button">Reset</button>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-heading"><div><h2>Your focus log</h2><p>Saved on this device only, not on the server.</p></div><span class="small-badge" id="focus-today-total">0 min today</span></div>
+            <div id="focus-subject-totals" class="focus-totals"></div>
+            <div id="focus-log" class="focus-log"></div>
+            <div id="focus-log-empty" class="admin-empty">No focus sessions yet. Start your first round.</div>
+          </section>
+        </div>
+      </section>
       <section class="page-content hidden" id="admin-page"><div class="page-heading"><div><span class="eyebrow">CONTROL CENTER</span><h1>Admin dashboard<span class="heading-period">.</span></h1><p>Manage your learning community and shared resources.</p></div><button class="btn btn-primary" id="admin-upload-open">＋ Add material</button></div><div class="admin-stats" id="admin-stats"></div><div class="admin-columns"><section class="panel"><div class="panel-heading"><div><h2>Recent materials</h2><p>Shared resources in the library</p></div><button class="text-button" data-go-library>View library ↗</button></div><div class="table-wrap"><table><thead><tr><th>RESOURCE</th><th>SUBJECT</th><th>ADDED</th><th></th></tr></thead><tbody id="admin-material-rows"></tbody></table></div></section><section class="panel"><div class="panel-heading"><div><h2>People</h2><p>Registered accounts</p></div><span class="small-badge" id="user-count-badge">0 users</span></div><div id="admin-user-list" class="user-list"></div></section></div></section>
       <footer class="app-footer"><span>StudyHub <span class="footer-dot">·</span> Keep learning.</span><span>Organized learning starts here.</span></footer>
     </main>
