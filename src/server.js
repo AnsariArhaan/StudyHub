@@ -87,7 +87,8 @@ const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
   filename: (_req, file, cb) => cb(null, `${crypto.randomUUID()}.pdf`)
 });
-const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024, files: 1 }, fileFilter: (_req, file, cb) => {
+// Browser multipart filenames use UTF-8; explicit filename* charsets remain supported.
+const upload = multer({ storage, defParamCharset: 'utf8', limits: { fileSize: 20 * 1024 * 1024, files: 1 }, fileFilter: (_req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
   if (ext !== '.pdf' || file.mimetype !== 'application/pdf') return cb(new Error('Only PDF files are allowed.'));
   cb(null, true);
