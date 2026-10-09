@@ -1,5 +1,6 @@
 const express = require('express');
 const session = require('express-session');
+const FileStore = require('session-file-store')(session);
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const multer = require('multer');
@@ -46,21 +47,28 @@ async function ensureAdmin() {
     if (existing.role !== 'admin') {
       throw new Error('ADMIN_EMAIL belongs to an existing non-admin account. Choose an unused ADMIN_EMAIL or recover the intended account after verifying its owner; no account was promoted.');
     }
+    if (!Array.isArray(db.bookmarks[existing.id])) { db.bookmarks[existing.id] = []; saveDb(); }
     return;
   }
   const password = process.env.ADMIN_PASSWORD;
   if (!password) throw new Error('ADMIN_PASSWORD is not set. Copy .env.example to .env and set ADMIN_PASSWORD (min 12 characters).');
   if (password.length < 12) throw new Error('ADMIN_PASSWORD must be at least 12 characters.');
-  db.users.push({ id: crypto.randomUUID(), name: safeText(process.env.ADMIN_NAME || 'System Admin', 80), email, passwordHash: await bcrypt.hash(password, 12), role: 'admin', createdAt: new Date().toISOString() });
+  const admin = { id: crypto.randomUUID(), name: safeText(process.env.ADMIN_NAME || 'System Admin', 80), email, passwordHash: await bcrypt.hash(password, 12), role: 'admin', createdAt: new Date().toISOString() };
+  db.users.push(admin);
+  db.bookmarks[admin.id] = [];
   saveDb();
   console.log(`Initial admin created: ${email}`);
 }
 
+// Direct connections are the default. Trust only the deployment's known proxies.
+const proxySetting = String(process.env.TRUST_PROXY || '0').trim();
+if (proxySetting === 'true') throw new Error('TRUST_PROXY=true is unsafe. Use a known hop count or trusted proxy IPs/CIDRs.');
+app.set('trust proxy', proxySetting === 'false' ? false : /^\d+$/.test(proxySetting) ? Number(proxySetting) : proxySetting.split(',').map(value => value.trim()));
 app.disable('x-powered-by');
 app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'], objectSrc: ["'none'"], frameAncestors: ["'self'"] } } }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
-app.use(session({ name: 'smm.sid', secret: SESSION_SECRET, resave: false, saveUninitialized: false, cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 1000 * 60 * 60 * 8 } }));
+app.use(session({ store: new FileStore({ path: path.join(DATA_DIR, 'sessions'), ttl: 8 * 60 * 60, retries: 0 }), name: 'smm.sid', secret: SESSION_SECRET, resave: false, saveUninitialized: false, cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 1000 * 60 * 60 * 8 } }));
 app.use(['/api/auth/login', '/api/auth/register'], rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: true, legacyHeaders: false }));
 app.use(express.static(path.join(ROOT, 'public'), { index: 'index.html', maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0 }));
 
@@ -85,7 +93,7 @@ const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024, files: 1 
   cb(null, true);
 } });
 
-app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'Study Material Manager' }));
+app.get('/api/health', (_req, res) => res.json({ ok: true, app: 'StudyHub' }));
 app.get('/api/auth/me', (req, res) => {
   const user = db.users.find(u => u.id === req.session.userId);
   res.json({ user: user ? publicUser(user) : null });
@@ -126,6 +134,17 @@ app.get('/api/materials', auth, (req, res) => {
 });
 app.post('/api/materials', auth, adminOnly, upload.single('pdf'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Choose a PDF file to upload.' });
+  const header = Buffer.alloc(5);
+  let fd;
+  let validPdf = false;
+  try {
+    fd = fs.openSync(req.file.path, 'r');
+    validPdf = fs.readSync(fd, header, 0, header.length, 0) === header.length && header.equals(Buffer.from('%PDF-'));
+  } finally { if (fd !== undefined) fs.closeSync(fd); }
+  if (!validPdf) {
+    fs.unlinkSync(req.file.path);
+    return res.status(400).json({ error: 'The uploaded file is not a PDF (%PDF- header missing).' });
+  }
   const title = safeText(req.body.title, 140), subject = safeText(req.body.subject, 100), description = safeText(req.body.description, 800);
   if (title.length < 2 || subject.length < 2) { fs.unlinkSync(req.file.path); return res.status(400).json({ error: 'Title and subject are required.' }); }
   const material = { id: crypto.randomUUID(), title, subject, description, originalName: path.basename(req.file.originalname).slice(0, 180), storedName: req.file.filename, size: req.file.size, uploadedBy: req.user.id, uploadedByName: req.user.name, createdAt: new Date().toISOString() };
@@ -176,4 +195,4 @@ app.use((err, _req, res, _next) => {
   console.error(err); res.status(500).json({ error: 'Something went wrong on the server.' });
 });
 
-ensureAdmin().then(() => app.listen(PORT, () => console.log(`Study Material Manager running at http://localhost:${PORT}`))).catch(err => { console.error(err); process.exit(1); });
+ensureAdmin().then(() => app.listen(PORT, () => console.log(`StudyHub running at http://localhost:${PORT}`))).catch(err => { console.error(err); process.exit(1); });
