@@ -5,6 +5,7 @@ let activeAuthMode = 'login';
 let currentMaterials = [];
 let currentSubjects = [];
 let searchTimer;
+let libraryRequestId = 0;
 let confirmAction = null;
 const dateFmt = value => new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(new Date(value));
 const sizeFmt = n => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
@@ -48,7 +49,7 @@ function showApp(user) {
   $('#library-count').textContent = currentMaterials.length;
   navigate('library'); loadLibrary();
 }
-function showAuth() { currentUser = null; $('#app-view').classList.add('hidden'); $('#auth-view').classList.remove('hidden'); $('#auth-form').reset(); switchAuth('login'); }
+function showAuth() { libraryRequestId++; currentUser = null; $('#app-view').classList.add('hidden'); $('#auth-view').classList.remove('hidden'); $('#auth-form').reset(); switchAuth('login'); }
 function navigate(page) {
   if (page === 'admin' && currentUser?.role !== 'admin') page = 'library';
   ['library', 'bookmarks', 'admin'].forEach(p => $(`#${p}-page`).classList.toggle('hidden', p !== page));
@@ -58,7 +59,7 @@ function navigate(page) {
   if (page === 'library') loadLibrary(); if (page === 'bookmarks') loadBookmarks(); if (page === 'admin') loadAdmin();
 }
 function cardHtml(m) {
-  return `<article class="material-card"><div class="card-top"><div class="file-badge">PDF</div><span class="subject-tag" title="${esc(m.subject)}">${esc(m.subject)}</span></div><div class="card-top" style="margin-top:-8px;margin-bottom:10px"><span style="font-size:9px;color:#9ba3af">${esc(sizeFmt(m.size || 0))}</span><button class="bookmark-btn ${m.bookmarked ? 'saved' : ''}" data-bookmark="${esc(m.id)}" aria-label="${m.bookmarked ? 'Remove bookmark' : 'Bookmark material'}" title="${m.bookmarked ? 'Remove bookmark' : 'Bookmark material'}">${m.bookmarked ? '♥' : '♡'}</button></div><h3>${esc(m.title)}</h3><p class="material-description">${esc(m.description || 'No description provided for this resource.')}</p><div class="card-meta"><span>Added ${esc(dateFmt(m.createdAt))}</span><span title="${esc(m.uploadedByName)}">${esc(m.uploadedByName || 'StudySpace')}</span></div><div class="card-actions"><a class="open-pdf" href="/api/materials/${encodeURIComponent(m.id)}/pdf" target="_blank" rel="noopener">Open PDF ↗</a>${currentUser?.role === 'admin' ? `<button class="delete-material" data-delete-material="${esc(m.id)}">Delete</button>` : ''}</div></article>`;
+  return `<article class="material-card"><div class="card-top"><div class="file-badge">PDF</div><span class="subject-tag" title="${esc(m.subject)}">${esc(m.subject)}</span></div><div class="card-top" style="margin-top:-8px;margin-bottom:10px"><span style="font-size:9px;color:#9ba3af">${esc(sizeFmt(m.size || 0))}</span><button class="bookmark-btn ${m.bookmarked ? 'saved' : ''}" data-bookmark="${esc(m.id)}" aria-label="${m.bookmarked ? 'Remove bookmark' : 'Bookmark material'}" title="${m.bookmarked ? 'Remove bookmark' : 'Bookmark material'}">${m.bookmarked ? '♥' : '♡'}</button></div><h3>${esc(m.title)}</h3><p class="material-description">${esc(m.description || 'No description provided for this resource.')}</p><div class="card-meta"><span>Added ${esc(dateFmt(m.createdAt))}</span><span title="${esc(m.uploadedByName)}">${esc(m.uploadedByName || 'StudyHub')}</span></div><div class="card-actions"><a class="open-pdf" href="/api/materials/${encodeURIComponent(m.id)}/pdf" target="_blank" rel="noopener">Open PDF ↗</a>${currentUser?.role === 'admin' ? `<button class="delete-material" data-delete-material="${esc(m.id)}">Delete</button>` : ''}</div></article>`;
 }
 function renderCards(target, empty, materials) {
   $(target).innerHTML = materials.map(cardHtml).join(''); $(empty).classList.toggle('hidden', materials.length > 0);
@@ -69,9 +70,12 @@ function updateStats(materials, subjects) {
 }
 async function loadLibrary() {
   if (!currentUser) return;
+  const requestId = ++libraryRequestId;
+  const userId = currentUser.id;
   try {
     const q = $('#search-input').value.trim(); const subject = $('#subject-filter').value;
     const data = await api(`/api/materials?q=${encodeURIComponent(q)}&subject=${encodeURIComponent(subject)}`);
+    if (requestId !== libraryRequestId || currentUser?.id !== userId) return;
     currentMaterials = data.materials; currentSubjects = data.subjects;
     const filter = $('#subject-filter'); const old = filter.value;
     filter.innerHTML = '<option value="">All subjects</option>' + currentSubjects.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
@@ -79,7 +83,7 @@ async function loadLibrary() {
     updateStats(currentMaterials, currentSubjects); $('#results-label').textContent = q || subject ? 'Search results' : 'All materials'; $('#results-count').textContent = `${currentMaterials.length} ${currentMaterials.length === 1 ? 'result' : 'results'}`;
     renderCards('#material-grid', '#empty-state', currentMaterials);
     if ($('#bookmarks-page').classList.contains('hidden') === false) loadBookmarks();
-  } catch (e) { toast(e.message, 'error'); }
+  } catch (e) { if (requestId === libraryRequestId) toast(e.message, 'error'); }
 }
 async function loadBookmarks() {
   if (!currentUser) return;
@@ -118,7 +122,7 @@ $('#auth-form').addEventListener('submit', async e => {
     const payload = { email: $('#email').value, password: $('#password').value };
     if (activeAuthMode === 'register') payload.name = $('#name').value;
     const data = await api(`/api/auth/${activeAuthMode === 'register' ? 'register' : 'login'}`, { method: 'POST', body: JSON.stringify(payload) });
-    showApp(data.user); toast(activeAuthMode === 'register' ? 'Account created. Welcome to StudySpace!' : `Welcome back, ${data.user.name.split(' ')[0]}.`);
+    showApp(data.user); toast(activeAuthMode === 'register' ? 'Account created. Welcome to StudyHub!' : `Welcome back, ${data.user.name.split(' ')[0]}.`);
   } catch (err) { toast(err.message, 'error'); }
   finally { setBusy(button, false); }
 });
@@ -149,7 +153,7 @@ document.addEventListener('click', async e => {
   const delMaterial = e.target.closest('[data-delete-material]');
   if (delMaterial) { const id = delMaterial.dataset.deleteMaterial; const material = currentMaterials.find(m => m.id === id); askConfirm({ title: 'Delete this material?', copy: `“${material?.title || 'This material'}” and its uploaded PDF will be permanently removed.`, action: () => handleDeleteMaterial(id) }); return; }
   const delUser = e.target.closest('[data-delete-user]');
-  if (delUser) { const id = delUser.dataset.deleteUser; const name = $(`[data-delete-user="${CSS.escape(id)}"]`)?.closest('.user-row')?.querySelector('.user-details strong')?.textContent || 'this user'; askConfirm({ title: 'Remove this account?', copy: `${name} will lose access to StudySpace. This action cannot be undone.`, action: () => handleDeleteUser(id) }); }
+  if (delUser) { const id = delUser.dataset.deleteUser; const name = $(`[data-delete-user="${CSS.escape(id)}"]`)?.closest('.user-row')?.querySelector('.user-details strong')?.textContent || 'this user'; askConfirm({ title: 'Remove this account?', copy: `${name} will lose access to StudyHub. This action cannot be undone.`, action: () => handleDeleteUser(id) }); }
 });
 $('#confirm-cancel').addEventListener('click', () => { $('#confirm-modal').classList.add('hidden'); confirmAction = null; });
 $('#confirm-yes').addEventListener('click', async () => { const action = confirmAction; $('#confirm-modal').classList.add('hidden'); confirmAction = null; if (action) await action(); });
