@@ -12,6 +12,8 @@ StudyHub is a standalone, responsive study material management app.
 - 20 MB upload limit; server checks PDF extension, MIME type and the %PDF- header
 - Session cookies marked HttpOnly and SameSite=Lax, basic security headers and login/register rate limiting
 - Local JSON data store with atomic file replacement; uploaded PDFs saved in `uploads/`
+- Focus timer (Pomodoro) with per-subject session log stored on the device (localStorage)
+- Installable as a PWA: web manifest, service worker and offline app shell
 
 ## Tech Stack
 - **Backend:** Node.js, Express.js
