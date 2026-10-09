@@ -1,6 +1,6 @@
 # StudyHub
 
-AI-powered study hub built with Base44. A standalone, responsive study material management app.
+StudyHub is a standalone, responsive study material management app.
 
 ## Features
 - Student registration and sign-in with bcrypt password hashing
@@ -9,15 +9,15 @@ AI-powered study hub built with Base44. A standalone, responsive study material 
 - Per-user bookmarks
 - Authenticated PDF viewing (PDFs are not exposed as a public static directory)
 - Responsive desktop/mobile layout
-- 20 MB upload limit; server checks PDF extension and MIME type
-- Session cookies marked HttpOnly and SameSite=Lax, basic security headers and auth rate limiting
+- 20 MB upload limit; server checks PDF extension, MIME type and the %PDF- header
+- Session cookies marked HttpOnly and SameSite=Lax, basic security headers and login/register rate limiting
 - Local JSON data store with atomic file replacement; uploaded PDFs saved in `uploads/`
 
 ## Tech Stack
 - **Backend:** Node.js, Express.js
 - **Frontend:** HTML, CSS, Vanilla JavaScript
 - **Data Store:** Local JSON file
-- **Security:** bcryptjs, helmet, express-rate-limit
+- **Security:** bcryptjs, helmet, express-rate-limit, session-file-store
 
 ## Local Setup Steps
 
@@ -44,3 +44,19 @@ AI-powered study hub built with Base44. A standalone, responsive study material 
 ## Screenshots
 > [!NOTE]
 > Screenshots coming soon...
+
+## Sessions and deployment
+
+Sessions are stored in `data/sessions/` (8-hour expiry, hourly expired-file cleanup).
+Keep this private directory and a stable `SESSION_SECRET` on persistent storage to
+preserve sign-ins across restarts. It is ignored by Git. This store is for a single
+server with local disk, not multiple instances or an ephemeral filesystem.
+
+`TRUST_PROXY=0` is the safe default for direct connections. If your deployment has
+exactly one trusted reverse proxy and direct access to the app is blocked, set
+`TRUST_PROXY=1`. For a different topology use the correct hop count or comma-separated
+trusted proxy IPs/CIDRs. Do not trust arbitrary client forwarding headers. Production
+cookies require HTTPS; the trusted proxy must forward `X-Forwarded-Proto: https`.
+
+Set your own `ADMIN_PASSWORD` and production `SESSION_SECRET`; do not use the dummy
+values in `.env.example`. Changing `ADMIN_PASSWORD` does not reset an existing account.
