@@ -1,6 +1,6 @@
 // StudyHub app shell: offline static assets only. API and auth traffic is never cached.
 const SHELL = 'studyhub-shell-v1';
-const ASSETS = ['/', '/styles.css', '/app.js', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
+const ASSETS = ['/', '/styles.css', '/app.js', '/manifest.webmanifest', '/icons/icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(SHELL).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
 });
