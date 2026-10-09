@@ -14,6 +14,12 @@ async function api(url, options = {}) {
   if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const response = await fetch(url, { credentials: 'same-origin', ...options, headers });
   const data = response.status === 204 ? {} : await response.json().catch(() => ({}));
+  if (response.status === 401 && currentUser) {
+    showAuth();
+    closeUpload();
+    $('#confirm-modal').classList.add('hidden');
+    confirmAction = null;
+  }
   if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
