@@ -2,20 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#101827"><title>StudySpace — Study Material Manager</title>
+  <meta name="theme-color" content="#101827"><title>StudyHub</title>
   <link rel="stylesheet" href="/styles.css"><script src="/app.js" defer></script>
 </head>
 <body>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <main id="auth-view" class="auth-shell">
     <section class="auth-visual">
-      <div class="brand brand-light"><span class="brand-mark">S</span><span>StudySpace</span></div>
+      <div class="brand brand-light"><span class="brand-mark">S</span><span>StudyHub</span></div>
       <div class="visual-copy"><span class="eyebrow">YOUR CAMPUS LIBRARY</span><h1>Make every<br><em>study session</em><br>count.</h1><p>All your notes, handouts, and reference PDFs — organized in one calm place.</p></div>
       <div class="visual-bottom"><span class="mini-orb"></span> Built for curious minds <span class="visual-dot">·</span> Made for students</div>
       <div class="visual-shape shape-one"></div><div class="visual-shape shape-two"></div>
     </section>
     <section class="auth-panel"><div class="auth-card">
-      <div class="brand brand-dark"><span class="brand-mark">S</span><span>StudySpace</span></div>
+      <div class="brand brand-dark"><span class="brand-mark">S</span><span>StudyHub</span></div>
       <div class="auth-heading"><span class="eyebrow">WELCOME TO YOUR WORKSPACE</span><h2 id="auth-title">Good to have you back.</h2><p id="auth-subtitle">Sign in to pick up where you left off.</p></div>
       <div class="auth-tabs"><button class="auth-tab active" id="login-tab" type="button">Sign in</button><button class="auth-tab" id="register-tab" type="button">Create account</button></div>
       <form id="auth-form" class="form-stack">
@@ -30,7 +30,7 @@
 
   <div id="app-view" class="app-shell hidden">
     <aside class="sidebar" id="sidebar">
-      <a class="brand brand-dark side-brand" href="#"><span class="brand-mark">S</span><span>StudySpace</span></a>
+      <a class="brand brand-dark side-brand" href="#"><span class="brand-mark">S</span><span>StudyHub</span></a>
       <div class="workspace-label">WORKSPACE</div>
       <nav class="side-nav">
         <button class="nav-item active" data-page="library"><span class="nav-icon">▤</span> Library <span class="nav-count" id="library-count">0</span></button>
@@ -48,7 +48,7 @@
       </section>
       <section class="page-content hidden" id="bookmarks-page"><div class="page-heading"><div><span class="eyebrow">YOUR PERSONAL READING LIST</span><h1>My bookmarks<span class="heading-period">.</span></h1><p>Resources you saved to revisit later.</p></div></div><div id="bookmark-grid" class="material-grid"></div><div id="bookmark-empty" class="empty-state hidden"><div class="empty-icon">♡</div><h3>Your reading list starts here</h3><p>Bookmark a material from the library and it will show up here.</p><button class="btn btn-secondary" data-go-library>Explore library</button></div></section>
       <section class="page-content hidden" id="admin-page"><div class="page-heading"><div><span class="eyebrow">CONTROL CENTER</span><h1>Admin dashboard<span class="heading-period">.</span></h1><p>Manage your learning community and shared resources.</p></div><button class="btn btn-primary" id="admin-upload-open">＋ Add material</button></div><div class="admin-stats" id="admin-stats"></div><div class="admin-columns"><section class="panel"><div class="panel-heading"><div><h2>Recent materials</h2><p>Shared resources in the library</p></div><button class="text-button" data-go-library>View library ↗</button></div><div class="table-wrap"><table><thead><tr><th>RESOURCE</th><th>SUBJECT</th><th>ADDED</th><th></th></tr></thead><tbody id="admin-material-rows"></tbody></table></div></section><section class="panel"><div class="panel-heading"><div><h2>People</h2><p>Registered accounts</p></div><span class="small-badge" id="user-count-badge">0 users</span></div><div id="admin-user-list" class="user-list"></div></section></div></section>
-      <footer class="app-footer"><span>StudySpace <span class="footer-dot">·</span> Keep learning.</span><span>Organized learning starts here.</span></footer>
+      <footer class="app-footer"><span>StudyHub <span class="footer-dot">·</span> Keep learning.</span><span>Organized learning starts here.</span></footer>
     </main>
   </div>
 
