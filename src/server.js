@@ -41,7 +41,13 @@ function findUserByEmail(email) { return db.users.find(u => u.email.toLowerCase(
 
 async function ensureAdmin() {
   const email = String(process.env.ADMIN_EMAIL || 'admin@example.com').toLowerCase();
-  if (findUserByEmail(email)) return;
+  const existing = findUserByEmail(email);
+  if (existing) {
+    if (existing.role !== 'admin') {
+      throw new Error('ADMIN_EMAIL belongs to an existing non-admin account. Choose an unused ADMIN_EMAIL or recover the intended account after verifying its owner; no account was promoted.');
+    }
+    return;
+  }
   const password = process.env.ADMIN_PASSWORD;
   if (!password) throw new Error('ADMIN_PASSWORD is not set. Copy .env.example to .env and set ADMIN_PASSWORD (min 12 characters).');
   if (password.length < 12) throw new Error('ADMIN_PASSWORD must be at least 12 characters.');
@@ -55,7 +61,7 @@ app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'self'"], 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: false, limit: '1mb' }));
 app.use(session({ name: 'smm.sid', secret: SESSION_SECRET, resave: false, saveUninitialized: false, cookie: { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 1000 * 60 * 60 * 8 } }));
-app.use('/api/auth', rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: true, legacyHeaders: false }));
+app.use(['/api/auth/login', '/api/auth/register'], rateLimit({ windowMs: 15 * 60 * 1000, limit: 40, standardHeaders: true, legacyHeaders: false }));
 app.use(express.static(path.join(ROOT, 'public'), { index: 'index.html', maxAge: process.env.NODE_ENV === 'production' ? '1h' : 0 }));
 
 function auth(req, res, next) {
@@ -131,7 +137,10 @@ app.get('/api/materials/:id/pdf', auth, (req, res) => {
   const file = path.join(UPLOAD_DIR, path.basename(material.storedName));
   if (!fs.existsSync(file)) return res.status(404).json({ error: 'PDF file is missing from the server.' });
   res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `inline; filename="${material.originalName.replace(/["\r\n]/g, '')}"`);
+  const filename = Buffer.from(material.originalName, 'utf8').toString('utf8');
+  const fallback = filename.replace(/[^\x20-\x7e]|["\\]/g, '_') || 'document.pdf';
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+  res.setHeader('Content-Disposition', `inline; filename="${fallback}"; filename*=UTF-8''${encoded}`);
   res.setHeader('X-Content-Type-Options', 'nosniff'); res.sendFile(file);
 });
 app.delete('/api/materials/:id', auth, adminOnly, (req, res) => {
