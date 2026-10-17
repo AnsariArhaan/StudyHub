@@ -1,5 +1,8 @@
 // StudyHub app shell: offline static assets only. API and auth traffic is never cached.
-const SHELL = 'studyhub-shell-v1';
+// B-6: the cache name carries the app version - bump it on every release so old shells
+// are purged, and only successful responses are ever cached.
+const APP_VERSION = '1.1.0'; // keep in sync with package.json
+const SHELL = `studyhub-shell-v${APP_VERSION}`;
 const ASSETS = ['/', '/styles.css', '/app.js', '/manifest.webmanifest', '/icons/icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(SHELL).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -12,7 +15,8 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
   if (event.request.mode === 'navigate') {
     event.respondWith(fetch(event.request).then(response => {
-      const copy = response.clone(); caches.open(SHELL).then(cache => cache.put('/', copy)); return response;
+      if (response.ok) { const copy = response.clone(); caches.open(SHELL).then(cache => cache.put('/', copy)); }
+      return response;
     }).catch(() => caches.match('/')));
     return;
   }

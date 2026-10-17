@@ -11,7 +11,7 @@ const dateFmt = value => new Intl.DateTimeFormat(undefined, { month: 'short', da
 const sizeFmt = n => n < 1024 * 1024 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / (1024 * 1024)).toFixed(1)} MB`;
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 async function api(url, options = {}) {
-  const headers = { ...(options.headers || {}) };
+  const headers = { 'X-Requested-With': 'XMLHttpRequest', ...(options.headers || {}) };
   if (options.body && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json';
   const response = await fetch(url, { credentials: 'same-origin', ...options, headers });
   const data = response.status === 204 ? {} : await response.json().catch(() => ({}));
@@ -30,9 +30,11 @@ function toast(message, type = 'success') {
   clearTimeout(toastTimeout); toastTimeout = setTimeout(() => el.classList.remove('show'), 3200);
 }
 function setBusy(button, busy, text) { button.disabled = busy; if (busy) { button.dataset.oldText = button.innerHTML; button.textContent = text || 'Please wait…'; } else if (button.dataset.oldText) { button.innerHTML = button.dataset.oldText; delete button.dataset.oldText; } }
+let inviteRequired = false;
 function switchAuth(mode) {
   activeAuthMode = mode;
   const register = mode === 'register';
+  $('#invite-wrap')?.classList.toggle('hidden', !(register && inviteRequired));
   $('#login-tab').classList.toggle('active', !register); $('#register-tab').classList.toggle('active', register);
   $('#name-wrap').classList.toggle('hidden', !register); $('#name').required = register;
   $('#auth-title').textContent = register ? 'Your next chapter starts here.' : 'Good to have you back.';
@@ -43,13 +45,22 @@ function switchAuth(mode) {
 }
 function showApp(user) {
   currentUser = user; $('#auth-view').classList.add('hidden'); $('#app-view').classList.remove('hidden');
+  try { sessionStorage.setItem('studyhub.lastUser', JSON.stringify(user)); } catch {}
+  setFocusUser(user); restoreTimer();
   const initial = (user.name || 'S').trim().charAt(0).toUpperCase();
   $('#profile-avatar').textContent = initial; $('#top-avatar').textContent = initial; $('#profile-name').textContent = user.name; $('#profile-role').textContent = user.role === 'admin' ? 'Administrator' : 'Student account';
   $$('.admin-nav,.admin-only').forEach(el => el.classList.toggle('hidden', user.role !== 'admin'));
   $('#library-count').textContent = currentMaterials.length;
-  navigate('library'); loadLibrary();
+  navigate('library');
 }
-function showAuth() { libraryRequestId++; currentUser = null; $('#app-view').classList.add('hidden'); $('#auth-view').classList.remove('hidden'); $('#auth-form').reset(); switchAuth('login'); }
+function showAuth() {
+  libraryRequestId++; currentUser = null;
+  setFocusUser(null);
+  try { sessionStorage.removeItem('studyhub.lastUser'); } catch {}
+  currentMaterials = []; currentSubjects = [];
+  ['#material-grid', '#bookmark-grid', '#admin-user-list', '#admin-material-rows', '#admin-stats'].forEach(sel => { const el = $(sel); if (el) el.innerHTML = ''; });
+  $('#app-view').classList.add('hidden'); $('#auth-view').classList.remove('hidden'); $('#auth-form').reset(); switchAuth('login');
+}
 function navigate(page) {
   if (page === 'admin' && currentUser?.role !== 'admin') page = 'library';
   ['library', 'bookmarks', 'focus', 'admin'].forEach(p => $(`#${p}-page`).classList.toggle('hidden', p !== page));
@@ -120,7 +131,7 @@ $('#auth-form').addEventListener('submit', async e => {
   e.preventDefault(); const button = $('#auth-submit'); setBusy(button, true, 'Please wait…');
   try {
     const payload = { email: $('#email').value, password: $('#password').value };
-    if (activeAuthMode === 'register') payload.name = $('#name').value;
+    if (activeAuthMode === 'register') { payload.name = $('#name').value; const ic = $('#invite-code'); if (ic && ic.value.trim()) payload.inviteCode = ic.value.trim(); }
     const data = await api(`/api/auth/${activeAuthMode === 'register' ? 'register' : 'login'}`, { method: 'POST', body: JSON.stringify(payload) });
     showApp(data.user); toast(activeAuthMode === 'register' ? 'Account created. Welcome to StudyHub!' : `Welcome back, ${data.user.name.split(' ')[0]}.`);
   } catch (err) { toast(err.message, 'error'); }
@@ -148,7 +159,7 @@ $('#upload-form').addEventListener('submit', async e => {
 });
 document.addEventListener('click', async e => {
   const bookmark = e.target.closest('[data-bookmark]');
-  if (bookmark) { try { await api(`/api/materials/${encodeURIComponent(bookmark.dataset.bookmark)}/bookmark`, { method: 'POST' }); await loadLibrary(); if (!$('#bookmarks-page').classList.contains('hidden')) await loadBookmarks(); }
+  if (bookmark) { try { await api(`/api/materials/${encodeURIComponent(bookmark.dataset.bookmark)}/bookmark`, { method: 'POST', body: JSON.stringify({ bookmarked: !bookmark.classList.contains('saved') }) }); await loadLibrary(); if (!$('#bookmarks-page').classList.contains('hidden')) await loadBookmarks(); }
     catch (err) { toast(err.message, 'error'); } return; }
   const delMaterial = e.target.closest('[data-delete-material]');
   if (delMaterial) { const id = delMaterial.dataset.deleteMaterial; const material = currentMaterials.find(m => m.id === id); askConfirm({ title: 'Delete this material?', copy: `“${material?.title || 'This material'}” and its uploaded PDF will be permanently removed.`, action: () => handleDeleteMaterial(id) }); return; }
@@ -160,20 +171,34 @@ $('#confirm-yes').addEventListener('click', async () => { const action = confirm
 $('#mobile-menu').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); $('#search-input').focus(); } if (e.key === 'Escape') { closeUpload(); $('#confirm-modal').classList.add('hidden'); $('#sidebar').classList.remove('open'); } });
 (async function init() {
-  try { const data = await api('/api/auth/me'); if (data.user) showApp(data.user); else showAuth(); }
-  catch { showAuth(); }
+  try { const cfg = await api('/api/auth/config'); inviteRequired = !!cfg.inviteRequired; } catch {}
+  try { const data = await api('/api/auth/me'); if (data.user) { showApp(data.user); return; } } catch {}
+  // B-33: offline with a previously signed-in session - show the app read-only instead of a dead sign-in.
+  if (!navigator.onLine) {
+    try { const cached = JSON.parse(sessionStorage.getItem('studyhub.lastUser') || 'null'); if (cached) { showApp(cached); toast('You are offline. Showing your last loaded library; changes will fail until you reconnect.', 'error'); return; } } catch {}
+  }
+  showAuth();
 })();
 
 // Focus timer (Pomodoro). All focus data stays in this browser's localStorage - nothing is sent to the server.
-const FOCUS_LOG_KEY = 'studyhub.focus.log';
-const FOCUS_ACTIVE_KEY = 'studyhub.focus.active';
+// B-9: focus data is namespaced per account so shared browsers never mix histories.
+let FOCUS_USER_KEY = null;
+const TAB_ID = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()));
+function keys() { const base = FOCUS_USER_KEY || 'studyhub'; return { log: `${base}.focus.log`, active: `${base}.focus.active` }; }
+function setFocusUser(user) {
+  const prev = FOCUS_USER_KEY;
+  if (timerState) { timerState = null; clearInterval(timerInterval); } // signing out stops a running round
+  if (prev) { try { localStorage.removeItem(prev + '.focus.active'); } catch {} }
+  FOCUS_USER_KEY = user ? `${user.id}:${user.email}` : null;
+  renderTimer(); renderFocusLog();
+}
 let timerState = null;
 let timerInterval = null;
 let activePreset = { focus: 25, break: 5 };
 
-function loadFocusLog() { try { const log = JSON.parse(localStorage.getItem(FOCUS_LOG_KEY)); return Array.isArray(log) ? log : []; } catch { return []; } }
-function saveFocusLog(log) { try { localStorage.setItem(FOCUS_LOG_KEY, JSON.stringify(log.slice(-200))); } catch {} }
-function persistTimerState() { try { if (timerState) localStorage.setItem(FOCUS_ACTIVE_KEY, JSON.stringify(timerState)); else localStorage.removeItem(FOCUS_ACTIVE_KEY); } catch {} }
+function loadFocusLog() { try { const log = JSON.parse(localStorage.getItem(keys().log)); return Array.isArray(log) ? log.map(e => ({ subject: String(e?.subject ?? 'General').slice(0, 100), minutes: Number(e?.minutes) || 0, endedAt: String(e?.endedAt || new Date().toISOString()) })) : []; } catch { return []; } }
+function saveFocusLog(log) { try { localStorage.setItem(keys().log, JSON.stringify(log.slice(-200))); } catch {} }
+function persistTimerState() { try { if (timerState) localStorage.setItem(keys().active, JSON.stringify(timerState)); else localStorage.removeItem(keys().active); } catch {} }
 function idleFocusMinutes() { const c = parseInt($('#focus-custom')?.value, 10); return Number.isFinite(c) && c >= 1 ? Math.min(c, 240) : activePreset.focus; }
 function timerRemaining() { if (!timerState) return idleFocusMinutes() * 60000; return timerState.paused ? timerState.remainingMs : Math.max(0, timerState.endAt - Date.now()); }
 function fmtClock(ms) { const t = Math.ceil(ms / 1000); return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`; }
@@ -201,7 +226,12 @@ function startTimer() {
   const focusMinutes = idleFocusMinutes();
   const subject = ($('#focus-subject').value.trim() || 'General').slice(0, 100);
   clearInterval(timerInterval);
-  timerState = { phase: 'focus', subject, focusMinutes, breakMinutes: activePreset.break, endAt: Date.now() + focusMinutes * 60000, remainingMs: null, paused: false };
+  // B-35: a round already running in another tab must not be double-logged here.
+  try {
+    const other = JSON.parse(localStorage.getItem(keys().active) || 'null');
+    if (other && other.owner !== TAB_ID && !other.paused && Date.now() < other.endAt) return toast('A focus round is already running in another tab. Finish or reset it there first.', 'error');
+  } catch {}
+  timerState = { phase: 'focus', subject, focusMinutes, breakMinutes: activePreset.break, endAt: Date.now() + focusMinutes * 60000, remainingMs: null, paused: false, owner: TAB_ID };
   timerInterval = setInterval(tickTimer, 500); persistTimerState(); renderTimer();
 }
 function togglePause() {
@@ -232,19 +262,25 @@ function renderFocusLog() {
   const today = new Date().toDateString();
   const todays = log.filter(e => new Date(e.endedAt).toDateString() === today);
   $('#focus-today-total').textContent = `${todays.reduce((sum, e) => sum + (e.minutes || 0), 0)} min today`;
-  const bySubject = {};
-  todays.forEach(e => { bySubject[e.subject] = (bySubject[e.subject] || 0) + (e.minutes || 0); });
-  $('#focus-subject-totals').innerHTML = Object.entries(bySubject).sort((a, b) => b[1] - a[1]).map(([s, m]) => `<span class="focus-chip">${esc(s)} · ${m} min</span>`).join('');
+  const bySubject = new Map();
+  todays.forEach(e => bySubject.set(e.subject, (bySubject.get(e.subject) || 0) + e.minutes));
+  $('#focus-subject-totals').innerHTML = [...bySubject.entries()].sort((a, b) => b[1] - a[1]).map(([s, m]) => `<span class="focus-chip">${esc(s)} · ${m} min</span>`).join('');
   box.innerHTML = [...log].reverse().slice(0, 10).map(e => `<div class="focus-log-row"><span class="focus-log-subject">${esc(e.subject)}</span><span class="focus-log-meta">${e.minutes} min · ${esc(dateFmt(e.endedAt))}, ${esc(new Date(e.endedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }))}</span></div>`).join('');
   $('#focus-log-empty').classList.toggle('hidden', log.length > 0);
 }
 function restoreTimer() {
   let saved;
-  try { saved = JSON.parse(localStorage.getItem(FOCUS_ACTIVE_KEY)); } catch { saved = null; }
+  try { saved = JSON.parse(localStorage.getItem(keys().active)); } catch { saved = null; }
   if (!saved || (saved.phase !== 'focus' && saved.phase !== 'break') || (typeof saved.endAt !== 'number' && !saved.paused)) return;
+  if (saved.owner && saved.owner !== TAB_ID) return; // B-35: another tab owns the running round
   timerState = saved;
   if (timerState.paused) { renderTimer(); return; }
-  if (Date.now() >= timerState.endAt) { completeTimerPhase(); return; }
+  if (Date.now() >= timerState.endAt) {
+    // B-26: the round ended while the page was closed - log it at its real end time
+    // instead of "now", and do not auto-start a fresh break in the background.
+    if (timerState.phase === 'focus') { const log = loadFocusLog(); log.push({ subject: timerState.subject, minutes: timerState.focusMinutes, endedAt: new Date(timerState.endAt).toISOString() }); saveFocusLog(log); }
+    timerState = null; persistTimerState(); renderTimer(); renderFocusLog(); return;
+  }
   timerInterval = setInterval(tickTimer, 500); renderTimer();
 }
 $$('#timer-presets .preset-btn').forEach(b => b.addEventListener('click', () => {
@@ -256,7 +292,7 @@ $('#timer-start').addEventListener('click', startTimer);
 $('#timer-pause').addEventListener('click', togglePause);
 $('#timer-reset').addEventListener('click', resetTimer);
 $('#focus-custom').addEventListener('input', () => { if (!timerState) renderTimer(); });
-restoreTimer();
+// restoreTimer() runs from showApp once the signed-in user (and their focus namespace) is known.
 
 // Progressive web app shell: register the service worker for installability and offline static assets.
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
